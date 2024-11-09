@@ -21,7 +21,7 @@ const axiosInstance = axios.create({
       : undefined //? Use proxy if set (globalProxy is injected by the patcher)
 })
 
-const hasInternet = () => axiosInstance.head('/', { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) httptoolkit/1.19.1 Chrome/122.0.6261.130 Electron/29.1.5 Safari/537.36' } }).then(() => true).catch(() => false)
+const hasInternet = () => axiosInstance.head('/', { headers: { 'Accept-Encoding': 'gzip, deflate, br', 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) httptoolkit/1.19.1 Chrome/122.0.6261.130 Electron/29.1.5 Safari/537.36' } }).then(() => true).catch(() => false)
 
 const port = process.env.PORT || 5067
 const tempPath = path.join(os.tmpdir(), 'httptoolkit-patch')
