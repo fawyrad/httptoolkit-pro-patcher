@@ -21,7 +21,7 @@ const axiosInstance = axios.create({
       : undefined //? Use proxy if set (globalProxy is injected by the patcher)
 })
 
-const hasInternet = () => axiosInstance.head('/').then(() => true).catch(() => false)
+const hasInternet = () => axiosInstance.head('/', { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) httptoolkit/1.19.1 Chrome/122.0.6261.130 Electron/29.1.5 Safari/537.36' } }).then(() => true).catch(() => false)
 
 const port = process.env.PORT || 5067
 const tempPath = path.join(os.tmpdir(), 'httptoolkit-patch')
@@ -36,14 +36,20 @@ app.disable('x-powered-by')
 app.all('*', async (req, res) => {
   console.log(`[Patcher] Request to: ${req.url}`)
 
-  let filePath = path.join(tempPath, new URL(req.url, process.env.APP_URL).pathname === '/' ? 'index.html' : new URL(req.url, process.env.APP_URL).pathname)
-  if (['/view', '/intercept', '/settings', '/mock'].includes(new URL(req.url, process.env.APP_URL).pathname)) {
+  const requestURL = new URL(req.url, process.env.APP_URL).pathname
+
+  let filePath = path.join(tempPath, requestURL === '/' ? 'index.html' : requestURL)
+
+  if (['/view', '/intercept', '/settings', '/mock'].includes(requestURL)) {
     filePath += '.html'
   }
 
   //? Prevent loading service worker to avoid caching issues
-  //! Commented out because it breaks the app (tf?? see #21)
-  // if (new URL(req.url, process.env.APP_URL).pathname === '/ui-update-worker.js') return res.status(404).send('Not found')
+  if (requestURL === '/ui-update-worker.js') {
+    console.log(`[Patcher] Preventing service worker from loading`)
+    res.header('Content-Type', 'application/javascript').send('self.addEventListener("install",e=>{e.waitUntil(self.skipWaiting()),console.log("[Patcher] HTTP Toolkit patched successfully =3")}),self.addEventListener("activate",e=>{e.waitUntil(self.clients.claim())}),self.addEventListener("fetch",()=>{});')
+    return
+  }
 
   if (!fs.existsSync(tempPath)) {
     console.log(`[Patcher] Temp path not found, creating: ${tempPath}`)
@@ -57,15 +63,21 @@ app.all('*', async (req, res) => {
       res.sendFile(filePath)
     } else {
       console.log(`[Patcher] File not found in temp path: ${filePath}`)
-      res.status(404).send('No internet connection and file is not cached')
+      const error = `No internet connection and file is not cached for file: ${requestURL}`
+      res.status(200).send(path.extname(filePath) === '.js' ? `console.error(\`${error}\`);` : error)
     }
     return
   }
 
+  const reqHeaders = req.headers
+  reqHeaders.host = 'app.httptoolkit.tech'
+  reqHeaders.referer = 'https://app.httptoolkit.tech/'
+  reqHeaders.origin = 'https://app.httptoolkit.tech'
+
   try {
     if (fs.existsSync(filePath)) { //? Check if file exists in temp path
       try {
-        const remoteDate = await axiosInstance.head(req.url).then(res => new Date(res.headers['last-modified']))
+        const remoteDate = await axiosInstance.head(req.url, { headers: reqHeaders }).then(res => new Date(res.headers['last-modified']))
         if (remoteDate < new Date(fs.statSync(filePath).mtime)) {
           console.log(`[Patcher] File not changed, serving from temp path`)
           res.sendFile(filePath)
@@ -76,7 +88,10 @@ app.all('*', async (req, res) => {
       }
     } else console.log(`[Patcher] File not found in temp path, downloading`)
 
-    const remoteFile = await axiosInstance.get(req.url, { responseType: 'arraybuffer' })
+    const remoteFile = await axiosInstance.get(req.url, {
+      headers: reqHeaders,
+      responseType: 'arraybuffer'
+    })
 
     for (const [key, value] of Object.entries(remoteFile.headers)) res.setHeader(key, value)
 
@@ -88,8 +103,10 @@ app.all('*', async (req, res) => {
     }
 
     recursiveMkdir(path.dirname(filePath))
+
     let data = remoteFile.data
-    if (new URL(req.url, process.env.APP_URL).pathname === '/main.js') { //? Patch main.js
+
+    if (requestURL === '/main.js') { //? Patch main.js
       console.log(`[Patcher] Patching main.js`)
       res.setHeader('Cache-Control', 'no-store') //? Prevent caching
 
@@ -123,6 +140,12 @@ app.all('*', async (req, res) => {
           console.log(`[Patcher] main.js patched`)
         }
       }
+    }
+    if (data === '') {
+      console.error(`[Patcher] [ERR] Empty response for file: ${filePath}`)
+      const error = `Empty response for file: ${requestURL}`
+      res.status(200).send(path.extname(filePath) === '.js' ? `console.error(\`${error}\`);document.dispatchEvent(Object.assign(new Event('load:failed'),{error:new Error(\`${error}\`)}))` : error)
+      return
     }
     fs.writeFileSync(filePath, data)
     console.log(`[Patcher] File downloaded and saved: ${filePath}`)
