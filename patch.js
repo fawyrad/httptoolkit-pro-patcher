@@ -142,12 +142,11 @@ app.all('*', async (req, res) => {
       }
     }
     if (data === '') {
-      console.error(`[Patcher] [ERR] Empty response for file: ${filePath}`)
+      console.error(`[Patcher] [ERR] Empty response for file: ${filePath}`, remoteFile)
       const error = `Empty response for file: ${requestURL}`
       res.status(200).send(path.extname(filePath) === '.js' ? `console.error(\`${error}\`);document.dispatchEvent(Object.assign(new Event('load:failed'),{error:new Error(\`${error}\`)}))` : error)
       return
-    }
-    fs.writeFileSync(filePath, data)
+    } else fs.writeFileSync(filePath, data)
     console.log(`[Patcher] File downloaded and saved: ${filePath}`)
     res.sendFile(filePath)
   } catch (e) {
