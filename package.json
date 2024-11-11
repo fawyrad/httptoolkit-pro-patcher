@@ -12,7 +12,6 @@
   "dependencies": {
     "@electron/asar": "^3.2.9",
     "chalk": "4",
-    "got-scraping": "^4.0.7",
     "prompts": "^2.4.2",
     "yargs": "^17.7.2"
   },
