@@ -3,6 +3,27 @@ const axios = require('axios').default
 const electron = require('electron')
 const express = require('express')
 const fs = require('fs')
+let gotScraping;
+
+async function fetchWithGotScraping(url) {
+  gotScraping ??= (await import('got-scraping')).gotScraping;
+
+  return gotScraping.get({
+    url: 'https://app.httptoolkit.tech' + url,
+    headerGeneratorOptions: {
+      browsers: [
+        {
+            name: 'chrome',
+            minVersion: 87,
+            maxVersion: 89
+        }
+    ],
+    devices: ['desktop'],
+    locales: ['de-DE', 'en-US'],
+    operatingSystems: ['windows', 'linux'],
+    }
+  })
+};
 
 function showPatchError(message) {
   console.error(message)
@@ -111,6 +132,12 @@ app.all('*', async (req, res) => {
       res.setHeader('Cache-Control', 'no-store') //? Prevent caching
 
       data = data.toString()
+
+      if (data === '') {
+        const remoteFile = await fetchWithGotScraping(req.url);
+        data = remoteFile.body.toString()
+        console.log("remoteFile", remoteFile.statusCode)
+      }
 
       const accStoreName = data.match(/class ([0-9A-Za-z_$]+){constructor\(e\){this\.goToSettings=e/)?.[1]
       const modName = data.match(/([0-9A-Za-z_$]+).(getLatestUserData|getLastUserData)/)?.[1]
